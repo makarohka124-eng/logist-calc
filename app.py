@@ -5,7 +5,7 @@ import pytz
 # Настройка страницы
 st.set_page_config(page_title="Logist Pro Calc", layout="centered", page_icon="🚛")
 
-# Время CET (Центральная Европа)
+# Время CET
 cet_zone = pytz.timezone('Europe/Berlin')
 now_cet = datetime.now(cet_zone)
 
@@ -42,54 +42,64 @@ with col_b:
 
 ferry_time = 1 if ferry_option == "Паром (1 час)" else (2 if ferry_option == "Паром (2 часа)" else 0)
 
-# --- РАСЧЕТ ---
+# --- МАТЕМАТИКА ---
 pure_drive = dist / speed
 
 if "Одиночка" in mode:
     limit = 9.0
-    left_in_shift = max(0.0, limit - already_driven)
-    if pure_drive <= left_in_shift:
-        total_breaks = 1 if (already_driven < 4.5 and (already_driven + pure_drive) > 4.5) else 0
+    # Сколько осталось до конца первой смены
+    left_in_first = max(0.0, limit - already_driven)
+    
+    if pure_drive <= left_in_first:
+        # Приезд в текущую смену
+        drive_last_day = already_driven + pure_drive
+        total_breaks = 1 if (already_driven < 4.5 and drive_last_day > 4.5) else 0
         total_rests = 0
-        drive_remaining = left_in_shift - pure_drive
     else:
-        rem_drive = pure_drive - left_in_shift
+        # Нужны отстои
+        rem_drive = pure_drive - left_in_first
         full_shifts = rem_drive // limit
-        rem_last = rem_drive % limit
-        total_breaks = (1 if already_driven < 4.5 else 0) + (full_shifts * 2) + (1 if rem_last > 4.5 else 0)
+        drive_last_day = rem_drive % limit
+        # Если остаток 0, значит приехал ровно в конце смены
+        if drive_last_day == 0: drive_last_day = limit
+        
+        total_breaks = (1 if already_driven < 4.5 else 0) + (full_shifts * 2) + (1 if (drive_last_day > 4.5) else 0)
         total_rests = (full_shifts + 1) * 9.0
-        drive_remaining = limit - rem_last
+    
     total_way = pure_drive + total_breaks + total_rests + ferry_time
+    dh_val = int(limit - drive_last_day)
+
 else:
     # Экипаж
     limit = 18.0
-    left_in_shift = max(0.0, limit - already_driven)
-    if pure_drive <= left_in_shift:
+    left_in_first = max(0.0, limit - already_driven)
+    
+    if pure_drive <= left_in_first:
+        drive_last_day = already_driven + pure_drive
         rests = 0
-        drive_remaining = limit - pure_drive
     else:
-        rem_drive = pure_drive - left_in_shift
-        rests = (rem_drive // limit) + 1
-        drive_remaining = limit - (rem_drive % limit)
+        rem_drive = pure_drive - left_in_first
+        full_shifts = rem_drive // limit
+        drive_last_day = rem_drive % limit
+        if drive_last_day == 0: drive_last_day = limit
+        
+        rests = full_shifts + 1
+    
     total_way = pure_drive + (rests * 9.0) + ferry_time
+    dh_val = int(limit - drive_last_day)
 
-# Финал прибыли
+# Финал
 arrival = start_dt + timedelta(hours=total_way)
 
-# --- ЛОГИКА РАБОЧЕЙ СТРОКИ ---
-# Проверка 1/2 или 2/2 зависит от ТЕКУЩЕГО времени на винде (now_cet)
+# Строка для отчета (1/2 или 2/2 по времени на Windows)
 check_val = "1/2" if now_cet.hour < 12 else "2/2"
 arrival_str = arrival.strftime('%d.%m %H:%M')
-dh_val = int(drive_remaining)
-
-# Сама строка
 work_string = f"{check_val} ETA  {arrival_str}CET D/H {dh_val}"
 
 st.divider()
 st.success(f"## 🏁 ПРИБЫТИЕ: {arrival.strftime('%A, %H:%M')} (CET)")
 
-# Вывод строки для копирования
 st.subheader("📝 Скопируй строку для отчета:")
-st.code(work_string) 
+st.code(work_string)
 
-st.caption("Нажми на иконку в углу поля выше, чтобы скопировать текст")
+st.caption(f"Чистое вождение: {pure_drive:.1f} ч. | Всего в пути: {total_way:.1f} ч.")
