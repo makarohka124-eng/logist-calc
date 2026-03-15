@@ -3,55 +3,88 @@ from datetime import datetime, timedelta
 import pytz
 
 # Настройка страницы
-st.set_page_config(page_title="Logist Pro Calc", layout="centered", page_icon="🚛")
+st.set_page_config(page_title="Logist Pro Calc v2", layout="centered", page_icon="🚛")
 
-# Работа с временем CET
+# Настройка времени CET
 cet_zone = pytz.timezone('Europe/Berlin')
 now_cet = datetime.now(cet_zone)
 
-st.title("🚛 Калькулятор Логиста")
-st.write(f"### 🕒 Сейчас в Европе (CET): **{now_cet.strftime('%H:%M')}**")
+st.title("🚛 Профи-Калькулятор Логиста")
+
+# --- БЛОК 1: ВРЕМЯ ВЫЕЗДА ---
+st.subheader("📅 Когда выезд?")
+col_d, col_t = st.columns(2)
+with col_d:
+    start_date = st.date_input("Дата выезда", now_cet.date())
+with col_t:
+    start_time = st.time_input("Время выезда (CET)", now_cet.time())
+
+# Формируем полную дату старта
+start_dt = datetime.combine(start_date, start_time)
+start_dt = cet_zone.localize(start_dt)
 
 st.divider()
 
-# Ввод данных
-dist = st.number_input("Дистанция (км):", min_value=1, value=1000, step=10)
-speed = st.slider("Средняя скорость (км/ч):", 40, 90, 70)
-
-# ВЫБОР РЕЖИМА (то, что мы возвращаем)
-mode = st.radio("Кто за рулем?", ["Одиночка (паузы по 1ч)", "Экипаж (Двойка)"])
+# --- БЛОК 2: ПАРАМЕТРЫ РЕЙСА ---
+col1, col2 = st.columns(2)
+with col1:
+    dist = st.number_input("Осталось ехать (км):", min_value=1, value=1000)
+    speed = st.slider("Средняя скорость (км/ч):", 40, 90, 70)
+with col2:
+    mode = st.radio("Режим:", ["Одиночка (паузы 1ч)", "Экипаж"])
+    already_driven = st.number_input("Уже проехал сегодня (часов):", min_value=0.0, max_value=10.0, value=0.0, step=0.5)
 
 ferry = st.checkbox("🚢 Паром (+2 часа)")
 
 # --- МАТЕМАТИКА ---
-pure_drive = dist / speed
+pure_drive_needed = dist / speed
 extra = 2.0 if ferry else 0.0
 
 if "Одиночка" in mode:
-    # Твоя жесткая схема: 2 паузы по 1ч на смену 9ч
-    full_shifts = pure_drive // 9
-    remainder = pure_drive % 9
+    # Сколько осталось до конца первой смены (лимит 9ч)
+    drive_left_in_first_shift = max(0.0, 9.0 - already_driven)
     
-    total_breaks = full_shifts * 2 
-    if remainder > 4.5:
-        total_breaks += 1
+    if pure_drive_needed <= drive_left_in_first_shift:
+        # Успевает доехать за текущую смену
+        total_breaks = 1 if pure_drive_needed > 4.5 else 0
+        total_rests = 0
+    else:
+        # Не успевает, нужен отстой
+        first_shift_drive = drive_left_in_first_shift
+        remaining_drive = pure_drive_needed - first_shift_drive
         
-    total_rests = full_shifts * 9.0 # Всегда 9ч отдых
-    total_way = pure_drive + total_breaks + total_rests + extra
-    details = f"Пауз по 1ч: {int(total_breaks)}, Отстоев по 9ч: {int(full_shifts)}"
+        # Считаем паузы в первой смене
+        breaks_in_first = 1 if (already_driven < 4.5 and (already_driven + first_shift_drive) > 4.5) else 0
+        
+        # Считаем последующие полные смены
+        full_shifts = remaining_drive // 9
+        remainder_last_shift = remaining_drive % 9
+        
+        total_breaks = breaks_in_first + (full_shifts * 2) + (1 if remainder_last_shift > 4.5 else 0)
+        total_rests = (full_shifts + 1) * 9.0 # +1 это отстой после текущей недобитой смены
+        
+    total_way = pure_drive_needed + total_breaks + total_rests + extra
 else:
-    # Экипаж: 18ч рулят, 9ч стоят
-    rests_count = (pure_drive - 0.01) // 18.0
-    total_way = pure_drive + (rests_count * 9.0) + extra
-    details = f"Суточных отстоев экипажа (9ч): {int(rests_count)}"
+    # Экипаж (упрощенно: 18ч едут, 9ч стоят)
+    drive_left_in_shift = max(0.0, 18.0 - already_driven)
+    if pure_drive_needed > drive_left_in_shift:
+        remaining = pure_drive_needed - drive_left_in_shift
+        rests = (remaining // 18.0) + 1
+    else:
+        rests = 0
+    total_way = pure_drive_needed + (rests * 9.0) + extra
 
-# Прибытие
-arrival = now_cet + timedelta(hours=total_way)
+# Итоговое прибытие
+arrival = start_dt + timedelta(hours=total_way)
 
 st.divider()
 st.success(f"## 🏁 ПРИБЫТИЕ: {arrival.strftime('%A, %H:%M')} (CET)")
 st.info(f"📅 Дата: {arrival.strftime('%d.%m.%Y')}")
 
-# Детали
-st.write(f"**Всего в пути:** {total_way:.1f} ч.")
-st.caption(f"ℹ️ {details}")
+# Детали для контроля
+c1, c2 = st.columns(2)
+c1.metric("Чистое руление", f"{pure_drive_needed:.1f} ч")
+c2.metric("Общее время в пути", f"{total_way:.1f} ч")
+
+if "Одиночка" in mode:
+    st.caption(f"Учтено: {int(total_breaks)} пауз по 1ч и {int(total_way // 9)} ночевок по 9ч.")
