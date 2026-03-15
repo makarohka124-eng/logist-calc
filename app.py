@@ -5,7 +5,7 @@ import pytz
 # Настройка страницы
 st.set_page_config(page_title="Logist Pro Calc", layout="centered", page_icon="🚛")
 
-# Время CET
+# Время CET (Центральная Европа)
 cet_zone = pytz.timezone('Europe/Berlin')
 now_cet = datetime.now(cet_zone)
 
@@ -59,37 +59,37 @@ if "Одиночка" in mode:
         total_breaks = (1 if already_driven < 4.5 else 0) + (full_shifts * 2) + (1 if rem_last > 4.5 else 0)
         total_rests = (full_shifts + 1) * 9.0
         drive_remaining = limit - rem_last
+    total_way = pure_drive + total_breaks + total_rests + ferry_time
 else:
     # Экипаж
     limit = 18.0
     left_in_shift = max(0.0, limit - already_driven)
     if pure_drive <= left_in_shift:
         rests = 0
-        drive_remaining = left_in_shift - pure_drive
+        drive_remaining = limit - pure_drive
     else:
         rem_drive = pure_drive - left_in_shift
         rests = (rem_drive // limit) + 1
         drive_remaining = limit - (rem_drive % limit)
-    total_way = pure_drive + (rests * 9.0)
-    total_breaks = 0
+    total_way = pure_drive + (rests * 9.0) + ferry_time
 
-total_way = (pure_drive + (total_breaks if "Одиночка" in mode else 0) + 
-             (total_rests if "Одиночка" in mode else (rests * 9.0)) + ferry_time)
-
-# Финал
+# Финал прибыли
 arrival = start_dt + timedelta(hours=total_way)
 
-# Формирование строки для работы
-check_val = "1/2" if arrival.hour < 12 else "2/2"
+# --- ЛОГИКА РАБОЧЕЙ СТРОКИ ---
+# Проверка 1/2 или 2/2 зависит от ТЕКУЩЕГО времени на винде (now_cet)
+check_val = "1/2" if now_cet.hour < 12 else "2/2"
 arrival_str = arrival.strftime('%d.%m %H:%M')
 dh_val = int(drive_remaining)
+
+# Сама строка
 work_string = f"{check_val} ETA  {arrival_str}CET D/H {dh_val}"
 
 st.divider()
 st.success(f"## 🏁 ПРИБЫТИЕ: {arrival.strftime('%A, %H:%M')} (CET)")
 
 # Вывод строки для копирования
-st.subheader("📝 Строка для записи:")
-st.code(work_string)
+st.subheader("📝 Скопируй строку для отчета:")
+st.code(work_string) 
 
-st.info(f"Общее время в пути: {total_way:.1f} ч.")
+st.caption("Нажми на иконку в углу поля выше, чтобы скопировать текст")
