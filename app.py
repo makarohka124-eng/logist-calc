@@ -6,8 +6,19 @@ import math
 # Настройка страницы
 st.set_page_config(page_title="Logist Calc", layout="wide", page_icon="🚛")
 
-# Компактный интерфейс
-st.markdown("""<style>.block-container {padding-top: 1rem; padding-bottom: 0rem;}</style>""", unsafe_allow_html=True)
+# Компактный интерфейс и стиль для подписи
+st.markdown("""
+<style>
+    .block-container {padding-top: 1rem; padding-bottom: 0rem;}
+    .footer {
+        position: fixed;
+        left: 10px;
+        bottom: 10px;
+        color: grey;
+        font-size: 12px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Время CET
 cet_zone = pytz.timezone('Europe/Berlin')
@@ -15,7 +26,7 @@ now_cet = datetime.now(cet_zone)
 
 st.title("🚛 Профи-Калькулятор")
 
-# --- ИНИЦИАЛИЗАЦИЯ ПАМЯТИ (Session State) ---
+# --- ИНИЦИАЛИЗАЦИЯ ПАМЯТИ ---
 if 'start_date' not in st.session_state:
     st.session_state.start_date = now_cet.date()
 if 'start_time' not in st.session_state:
@@ -23,16 +34,13 @@ if 'start_time' not in st.session_state:
 
 # --- ЛИНИЯ 1: ВРЕМЯ ВЫЕЗДА ---
 c1, c2, c3 = st.columns([1, 1, 2])
-
 with c1:
     use_current = st.checkbox("Сейчас", value=True, key="use_curr")
-
 with c2:
     if not use_current:
         st.session_state.start_date = st.date_input("Дата", st.session_state.start_date)
     else:
         st.write("📅 " + now_cet.strftime('%d.%m'))
-
 with c3:
     if not use_current:
         st.session_state.start_time = st.time_input("Время (CET)", st.session_state.start_time)
@@ -62,10 +70,13 @@ with col4:
     st.write("Допы:")
     gas = st.checkbox("Заправка (+1ч)", key="gas")
     trailer = st.checkbox("Перецеп (+1ч)", key="trail")
+    loading = st.checkbox("Загрузка (+2ч)", key="load")
 
 # --- МАТЕМАТИКА ---
-extra_time = (1 if gas else 0) + (1 if trailer else 0) + misc
+# Суммируем все дополнительные часы
+extra_time = (1 if gas else 0) + (1 if trailer else 0) + (2 if loading else 0) + misc
 ferry_time = 1 if "1 час" in ferry_option else (2 if "2 часа" in ferry_option else 0)
+
 pure_drive = dist / speed
 limit = 9.0 if "Одиночка" in mode else 18.0
 current_left = max(0.0, limit - already_driven)
@@ -80,6 +91,7 @@ else:
     if drive_in_last_shift == 0: drive_in_last_shift = limit
     drive_remaining = limit - drive_in_last_shift
 
+# Расчет ETA
 if "Одиночка" in mode:
     if pure_drive <= current_left:
         total_breaks = 1 if (already_driven < 4.5 and (already_driven + pure_drive) > 4.5) else 0
@@ -95,7 +107,7 @@ else:
 
 arrival = start_dt + timedelta(hours=total_way)
 
-# --- ФИНАЛЬНАЯ СТРОКА ---
+# --- РАБОЧАЯ СТРОКА ---
 check_val = "1/2" if now_cet.hour < 12 else "2/2"
 arrival_str = arrival.strftime('%d.%m %H:%M')
 dh_val = int(drive_remaining)
@@ -109,4 +121,7 @@ with res_col1:
 with res_col2:
     st.code(work_string)
 
-st.caption(f"Итого в пути: {total_way:.1f} ч. | Чистое руление: {pure_drive:.1f} ч.")
+# Подпись в левом нижнем углу
+st.markdown('<div class="footer">Создал: Yaroslav Makarovskyi</div>', unsafe_allow_html=True)
+
+st.caption(f"Итого в пути: {total_way:.1f} ч. | Доп. время: {extra_time + ferry_time} ч.")
