@@ -3,10 +3,10 @@ from datetime import datetime, timedelta
 import pytz
 import math
 
-# Настройка страницы (широкий экран и компактные отступы)
+# Настройка страницы
 st.set_page_config(page_title="Logist Calc", layout="wide", page_icon="🚛")
 
-# Убираем лишние отступы сверху через CSS
+# Компактный интерфейс
 st.markdown("""<style>.block-container {padding-top: 1rem; padding-bottom: 0rem;}</style>""", unsafe_allow_html=True)
 
 # Время CET
@@ -15,44 +15,53 @@ now_cet = datetime.now(cet_zone)
 
 st.title("🚛 Профи-Калькулятор")
 
+# --- ИНИЦИАЛИЗАЦИЯ ПАМЯТИ (Session State) ---
+if 'start_date' not in st.session_state:
+    st.session_state.start_date = now_cet.date()
+if 'start_time' not in st.session_state:
+    st.session_state.start_time = now_cet.time()
+
 # --- ЛИНИЯ 1: ВРЕМЯ ВЫЕЗДА ---
 c1, c2, c3 = st.columns([1, 1, 2])
+
 with c1:
-    use_current = st.checkbox("Сейчас", value=True)
+    use_current = st.checkbox("Сейчас", value=True, key="use_curr")
+
 with c2:
     if not use_current:
-        sd = st.date_input("Дата", now_cet.date())
+        st.session_state.start_date = st.date_input("Дата", st.session_state.start_date)
     else:
         st.write("📅 " + now_cet.strftime('%d.%m'))
+
 with c3:
     if not use_current:
-        st_time = st.time_input("Время (CET)", now_cet.time())
-        start_dt = cet_zone.localize(datetime.combine(sd, st_time))
+        st.session_state.start_time = st.time_input("Время (CET)", st.session_state.start_time)
+        start_dt = cet_zone.localize(datetime.combine(st.session_state.start_date, st.session_state.start_time))
     else:
         start_dt = now_cet
         st.write("🕒 " + now_cet.strftime('%H:%M') + " CET")
 
 st.divider()
 
-# --- ЛИНИЯ 2: ПАРАМЕТРЫ И ДОПЫ ---
+# --- ЛИНИЯ 2: ПАРАМЕТРЫ РЕЙСА ---
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    dist = st.number_input("КМ:", min_value=1, value=1000)
-    speed = st.slider("Скорость:", 40, 90, 70)
+    dist = st.number_input("КМ:", min_value=1, value=1000, key="dist")
+    speed = st.slider("Скорость:", 40, 90, 70, key="speed")
 
 with col2:
-    mode = st.radio("Режим:", ["Одиночка", "Экипаж"], horizontal=True)
-    already_driven = st.number_input("Уже проехал (ч):", 0.0, 18.0, 0.0, 0.5)
+    mode = st.radio("Режим:", ["Одиночка", "Экипаж"], horizontal=True, key="mode")
+    already_driven = st.number_input("Уже проехал (ч):", 0.0, 18.0, 0.0, 0.5, key="already")
 
 with col3:
-    ferry_option = st.selectbox("Паром:", ["Нет", "1 час", "2 часа"])
-    misc = st.selectbox("Прочее (ч):", [0, 1, 2, 3, 4, 5])
+    ferry_option = st.selectbox("Паром:", ["Нет", "1 час", "2 часа"], key="ferry")
+    misc = st.selectbox("Прочее (ч):", [0, 1, 2, 3, 4, 5], key="misc")
 
 with col4:
     st.write("Допы:")
-    gas = st.checkbox("Заправка (+1ч)")
-    trailer = st.checkbox("Перецеп (+1ч)")
+    gas = st.checkbox("Заправка (+1ч)", key="gas")
+    trailer = st.checkbox("Перецеп (+1ч)", key="trail")
 
 # --- МАТЕМАТИКА ---
 extra_time = (1 if gas else 0) + (1 if trailer else 0) + misc
