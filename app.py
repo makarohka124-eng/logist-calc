@@ -10,7 +10,7 @@ st.set_page_config(page_title="Logist Calc Pro", layout="wide", page_icon="🚛"
 st.markdown("""
 <style>
     .block-container {padding-top: 1rem; padding-bottom: 0rem;}
-    .footer {position: fixed; left: 10px; bottom: 10px; color: grey; font-size: 11px;}
+    .footer {position: fixed; left: 10px; bottom: 10px; color: grey; font-size: 11px; z-index: 100;}
     .stCheckbox {margin-bottom: -10px;}
 </style>
 """, unsafe_allow_html=True)
@@ -39,6 +39,7 @@ with c2:
 with c3:
     if not use_current:
         st.session_state.start_time = st.time_input("Время выезда (CET)", st.session_state.start_time)
+        # Объединяем дату и время без лишних сложностей
         start_dt = cet_zone.localize(datetime.combine(st.session_state.start_date, st.session_state.start_time))
     else:
         start_dt = now_cet
@@ -57,17 +58,17 @@ with main_col1:
         speed = st.slider("Скорость:", 40, 90, 70, key="speed")
     with sc2:
         mode = st.radio("Режим:", ["Одиночка", "Экипаж"], horizontal=True, key="mode")
-        max_drive = 9.0 if mode == "Одиночка" else 18.0
-        already_driven = st.number_input(f"Уже проехал сегодня (ч):", 0.0, max_drive, 0.0, 0.5, key="already")
+        max_drive_limit = 9.0 if mode == "Одиночка" else 18.0
+        already_driven = st.number_input(f"Уже проехал сегодня (ч):", 0.0, max_drive_limit, 0.0, 0.5, key="already")
 
 with main_divider:
-    st.markdown('<div style="border-left: 1px solid grey; height: 350px; margin-left: 20px;"></div>', unsafe_allow_html=True)
+    st.markdown('<div style="border-left: 1px solid grey; height: 380px; margin-left: 20px; opacity: 0.3;"></div>', unsafe_allow_html=True)
 
 with main_col2:
     st.subheader("⏱️ Срок и Запреты")
     
     # СЕКЦИЯ FIX TIME
-    use_fix = st.checkbox("📍 Установить время выгрузки (FIX)", value=False)
+    use_fix = st.checkbox("📍 Установить время FIX (выгрузка)", value=False)
     if use_fix:
         fcol1, fcol2 = st.columns(2)
         with fcol1:
@@ -97,7 +98,7 @@ pure_drive = dist / speed
 limit = 9.0 if mode == "Одиночка" else 18.0
 current_left = max(0.0, limit - already_driven)
 
-# Базовое время (вождение + отстои 9ч + паузы одиночки 45 мин)
+# Базовый расчет (вождение + отстои)
 if mode == "Одиночка":
     if pure_drive <= current_left:
         total_way = pure_drive + (1 if (already_driven < 4.5 and (already_driven + pure_drive) > 4.5) else 0)
@@ -114,21 +115,21 @@ else:
 
 total_way += extra_time + ferry_time
 
-# Корректировка по странам
+# Запреты по странам
 if not ignore_bans and countries:
     check_time = start_dt
     added_hours = 0
     remaining_way = total_way
     while remaining_way > 0:
         is_banned = False
-        weekday = check_time.weekday()
-        hour = check_time.hour
+        wd = check_time.weekday()
+        hr = check_time.hour
         for c in countries:
-            if "DE" in c and weekday == 6 and 0 <= hour < 22: is_banned = True
-            if "AT" in c and ((weekday == 5 and hour >= 15) or (weekday == 6 and hour < 22)): is_banned = True
-            if "FR" in c and ((weekday == 5 and hour >= 22) or (weekday == 6 and hour < 22)): is_banned = True
-            if "IT" in c and weekday == 6 and 9 <= hour < 22: is_banned = True
-            if "CH" in c and (weekday == 6 or (hour >= 22 or hour < 5)): is_banned = True
+            if "DE" in c and wd == 6 and 0 <= hr < 22: is_banned = True
+            if "AT" in c and ((wd == 5 and hr >= 15) or (wd == 6 and hr < 22)): is_banned = True
+            if "FR" in c and ((wd == 5 and hr >= 22) or (wd == 6 and hr < 22)): is_banned = True
+            if "IT" in c and wd == 6 and 9 <= hr < 22: is_banned = True
+            if "CH" in c and (wd == 6 or (hr >= 22 or hr < 5)): is_banned = True
         if is_banned:
             added_hours += 1
             check_time += timedelta(hours=1)
@@ -144,23 +145,25 @@ st.divider()
 res_c1, res_c2 = st.columns(2)
 
 with res_c1:
-    # Проверка на опоздание
     if use_fix:
         diff = fix_dt - final_arrival
-        diff_hours = diff.total_seconds() / 3600
-        if diff_hours >= 0:
+        diff_total_sec = diff.total_seconds()
+        diff_h = int(abs(diff_total_sec) // 3600)
+        diff_m = int((abs(diff_total_sec) % 3600) // 60)
+        
+        if diff_total_sec >= 0:
             st.success(f"✅ **Приезд: {final_arrival.strftime('%A, %d.%m %H:%M')}**")
-            st.info(f"Успеваем! Запас по времени: **{abs(int(diff_hours))} ч. {int((diff_hours % 1) * 60)} мин.**")
+            st.info(f"Успеваем! Запас: **{diff_h}ч {diff_m}м**")
         else:
             st.error(f"🚨 **Приезд: {final_arrival.strftime('%A, %d.%m %H:%M')}**")
-            st.warning(f"ОПОЗДАНИЕ на **{abs(int(diff_hours))} ч. {int((abs(diff_hours) % 1) * 60)} мин.**")
+            st.warning(f"ОПОЗДАНИЕ на **{diff_h}ч {diff_m}м**")
     else:
         st.success(f"🏁 **Приезд: {final_arrival.strftime('%A, %d.%m %H:%M')}**")
 
-with res_col2:
+with res_c2:
     check_val = "1/2" if now_cet.hour < 12 else "2/2"
     work_string = f"{check_val} ETA  {final_arrival.strftime('%d.%m %H:%M')}CET D/H {int(drive_remaining)}"
-    st.subheader("📝 Строка для отчета:")
+    st.write("**Строка для отчета:**")
     st.code(work_string)
 
 st.markdown(f'<div class="footer">Создал: Yaroslav Makarovskyi</div>', unsafe_allow_html=True)
