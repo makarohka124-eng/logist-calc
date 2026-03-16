@@ -60,7 +60,23 @@ with col1:
 
 with col2:
     mode = st.radio("Режим:", ["Одиночка", "Экипаж"], horizontal=True, key="mode")
-    already_driven = st.number_input("Уже проехал (ч):", 0.0, 18.0, 0.0, 0.5, key="already")
+    
+    # Динамический лимит для "Уже проехал"
+    max_drive = 9.0 if mode == "Одиночка" else 18.0
+    
+    # Проверка, чтобы значение не вылетало за границы при смене режима
+    if 'already' not in st.session_state:
+        st.session_state.already = 0.0
+    if st.session_state.already > max_drive:
+        st.session_state.already = max_drive
+        
+    already_driven = st.number_input(f"Уже проехал сегодня (макс {int(max_drive)}ч):", 
+                                     min_value=0.0, 
+                                     max_value=max_drive, 
+                                     value=st.session_state.already, 
+                                     step=0.5, 
+                                     key="already_input")
+    st.session_state.already = already_driven
 
 with col3:
     ferry_option = st.selectbox("Паром:", ["Нет", "1 час", "2 часа"], key="ferry")
@@ -73,14 +89,14 @@ with col4:
     loading = st.checkbox("Загрузка (+2ч)", key="load")
 
 # --- МАТЕМАТИКА ---
-# Суммируем все дополнительные часы
 extra_time = (1 if gas else 0) + (1 if trailer else 0) + (2 if loading else 0) + misc
 ferry_time = 1 if "1 час" in ferry_option else (2 if "2 часа" in ferry_option else 0)
 
 pure_drive = dist / speed
-limit = 9.0 if "Одиночка" in mode else 18.0
+limit = 9.0 if mode == "Одиночка" else 18.0
 current_left = max(0.0, limit - already_driven)
 
+# Расчет D/H (Driving Hours) по твоей логике
 if pure_drive <= current_left:
     drive_remaining = current_left - pure_drive
     rests_count = 0
@@ -91,8 +107,8 @@ else:
     if drive_in_last_shift == 0: drive_in_last_shift = limit
     drive_remaining = limit - drive_in_last_shift
 
-# Расчет ETA
-if "Одиночка" in mode:
+# Расчет общего времени в пути для ETA
+if mode == "Одиночка":
     if pure_drive <= current_left:
         total_breaks = 1 if (already_driven < 4.5 and (already_driven + pure_drive) > 4.5) else 0
         total_rests = 0
@@ -121,7 +137,7 @@ with res_col1:
 with res_col2:
     st.code(work_string)
 
-# Подпись в левом нижнем углу
+# Подпись
 st.markdown('<div class="footer">Создал: Yaroslav Makarovskyi</div>', unsafe_allow_html=True)
 
-st.caption(f"Итого в пути: {total_way:.1f} ч. | Доп. время: {extra_time + ferry_time} ч.")
+st.caption(f"Итого в пути: {total_way:.1f} ч. | Чистое руление: {pure_drive:.1f} ч.")
